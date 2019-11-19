@@ -1,0 +1,48 @@
+#!/bin/sh
+
+$_ZAP_FLAGS
+
+_dir="$(dirname "$(readlink -f "$0")")"
+
+package_list="
+ram-framework
+"
+
+for package in ${package_list}; do
+	. "$_dir/${package}.sh"
+
+	git clone --depth=1 --bare "${git_repo?}" "./${package}.git"
+done
+
+release="$(date -u +0.%Y%m%d.%H%M%S.)"
+
+for package in ${package_list}; do
+	. "$_dir/${package}.sh"
+
+	git --git-dir "./${package}.git" show "${git_branch?}":"${git_specfile}" > "./${package}.spec"
+
+	rpmname=$(rpm -q --qf '%{name}' --specfile "./${package}.spec")
+	version=$(rpm -q --qf '%{version}' --specfile "./${package}.spec")
+
+	git --git-dir "./${package}.git" archive \
+		--prefix="${rpmname}-${version}/" -o "./${rpmname}-${version}.tar.gz" "${git_branch?}"
+
+	details=$(git --git-dir "./${package}.git" rev-parse --short "${git_branch?}")
+	commits=$(git --git-dir "./${package}.git" rev-list "${git_branch?}" | wc -l)
+
+	if test "${RPM_STAMP=_}"; then
+		sed -i "s/^Release:\(\s*\)\(.*\)$/Release:\1${release}%{expand:\2}/g" "./${package}.spec"
+	fi
+
+	mock --buildsrpm \
+		--spec "./${package}.spec" \
+		--sources . \
+		--resultdir "./${package}.tmp/"
+
+	mock --chain --localrepo . \
+		--define "vendor ~ \
+git repository: ${git_repo?} ~ \
+git commithash: ${details} (#${commits}) ~" \
+		"./${package}.tmp/"*.src.rpm
+
+done

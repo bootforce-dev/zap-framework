@@ -1,0 +1,11 @@
+#!/bin/sh
+
+$_ZAP_FLAGS
+
+yum install -y epel-release
+yum install -y bash-completion
+
+yum localinstall -y $(repoquery -a --location --enablerepo=ram-framework --disablerepo=* \
+		--repofrompath=ram-framework,"$_ZAP_FILES/$_ZAP_STAGE/results/default/")
+
+find /etc/sysconfig/network-scripts/ -name 'ifcfg-*' ! -name 'ifcfg-lo' -delete
